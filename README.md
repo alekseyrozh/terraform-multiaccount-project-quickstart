@@ -158,6 +158,14 @@ git push --set-upstream origin master
 
 18. Add 5 AWS account IDs noted down in step 12 to the top of this README
 
+- Pull latest master and create a new branch off it
+
+```
+git checkout master
+git pull
+git checkout -b "add-aws-account-ids-to-readme"
+```
+
 Use the following format:
 
 ```
@@ -186,9 +194,6 @@ AWS prod account ID:
 - create PR and merge
 
 ```
-git checkout master
-git pull
-git checkout -b "add-aws-account-ids-to-readme"
 git add .
 git commit -m "added aws account ids"
 git push --set-upstream origin add-aws-account-ids-to-readme
@@ -287,6 +292,14 @@ aws sts get-caller-identity
 
 22. Create a test PR creating an S3 bucket
 
+- Pull latest master and create a new branch off it
+
+```
+git checkout master
+git pull
+git checkout -b "add-my-first-test-bucket"
+```
+
 - Open `./accounts/dev/main.tf`
 - Add an S3 bucket at bottom (note that the name should be unique across all AWS)
 
@@ -299,7 +312,6 @@ resource "aws_s3_bucket" "terraform_state" {
 - Create a PR with those changes
 
 ```
-git checkout -b "add-my-first-test-bucket"
 git add .
 git commit -m "added my first bucket"
 git push --set-upstream origin add-my-first-test-bucket
