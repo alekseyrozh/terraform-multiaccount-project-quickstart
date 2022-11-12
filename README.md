@@ -277,11 +277,11 @@ Now we will setup quick readonly access to 4 member accounts
 
 - Repeat the same steps, display name - enter `ci-readonly`
 
-### STAGING
+### Staging
 
 - Repeat the same steps, display name - enter `staging-readonly`
 
-### PROD
+### Prod
 
 - Repeat the same steps, display name - enter `prod-readonly`. Select `orange` color to indicate it's `prod`
 
