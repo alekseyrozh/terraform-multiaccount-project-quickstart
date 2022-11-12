@@ -1,3 +1,24 @@
+# Description 
+This guide explains how to achieve the following:
+- Have 5 AWS accounts within an AWS organization:
+  * Created manually:
+    * `management` - manually created. Account where all the users are defined
+  * created by terraform. Only roles are defined here and they can be assumed by users or roles in `management` account:
+    * `dev`
+    * `ci`
+    * `staging`
+    * `prod`
+
+- 2 github repos that can make changes to all AWS accounts without storing any credentials
+  * `app repo` - stores all application code
+  * `terraform repo` - stores all terraform code
+  
+- Terraform code can be planned and applied via github actions
+
+- AWS users, roles and permissions are fully defined by terraform
+
+- Cross-account access is configured for users with different levels of access, depending on usergroups
+
 # Prerequisites
 
 - Terraform installed locally
