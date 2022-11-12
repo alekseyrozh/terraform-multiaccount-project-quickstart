@@ -15,7 +15,3 @@ module "shared_in_member_accounts" {
   terraform_repo_role_name                   = var.terraform_repo_role_name
   management_account_terraform_repo_role_arn = var.management_account_terraform_repo_role_arn
 }
-
-resource "aws_s3_bucket" "terraform_state" {
-  bucket = "my-test-bucket-eva-doggo-dog-bucket"
-}
