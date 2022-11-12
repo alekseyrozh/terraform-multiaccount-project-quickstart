@@ -1,0 +1,151 @@
+name: 'Terraform Update PR Comment'
+description: 'Updates PR comment with results from terraform checks'
+inputs:
+  fmt-outcome: # steps.fmt.outcome
+    required: true
+  fmt-outputs: # steps.fmt.outputs.stdout
+    required: true
+
+  init-outcome: # steps.init.outcome
+    required: true
+  init-error-outputs: # steps.init.outputs.stderr
+    required: true
+
+  verify-state-outcome: # steps.verify-state.outcome
+    required: true
+  verify-state-error-outputs: # steps.verify-state.outputs.stderr
+    required: true
+
+  validate-outcome: # steps.validate.outcome
+    required: true
+  validate-error-outputs: # steps.validate.outputs.stderr
+    required: true
+
+  plan-outcome: # steps.plan.outcome
+    required: true
+  plan-outputs: # steps.plan.outputs.stdout
+    required: true
+  plan-error-outputs: # steps.plan.outputs.stderr
+    required: true
+
+  tf_actions_working_dir: # env.tf_actions_working_dir
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Update PR comment
+      uses: actions/github-script@v6
+      if: github.event_name == 'pull_request'
+      env:
+        FMT: ${{ inputs.fmt-outputs }}
+        INIT_ERROR: '${{ inputs.init-error-outputs }}'
+        VERIFY_STATE_ERROR: '${{ inputs.verify-state-error-outputs }}'
+        VALIDATION_ERROR: '${{ inputs.validate-error-outputs }}'
+        PLAN: "\n${{ inputs.plan-outputs }}"
+        PLAN_ERROR: '${{ inputs.plan-error-outputs }}'
+        WORKING_DIR: ${{ inputs.tf_actions_working_dir }}
+      with:
+        github-token: '${{ github.token }}'
+        script: |
+          // 1. Retrieve existing bot comments for the PR
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          })
+          const botComment = comments.find(comment => {
+            return comment.user.type === 'Bot' && comment.body.includes('Terraform Format and Style')
+          })
+
+          // 2. Prepare format of the comment
+          const output = `#### ${{ inputs.fmt-outcome == 'success' && '🟢' || inputs.fmt-outcome == 'skipped' && '⚪️' || '🔴'}} Terraform Format and Style
+
+          ${{ inputs.fmt-outcome == 'failure' &&
+            '<details><summary>Show Format Error</summary>
+
+            \`\`\`\n
+            ${process.env.FMT}
+            \`\`\`
+
+            </details>' || ''
+          }}
+
+
+          #### ${{ inputs.init-outcome == 'success' && '🟢' || inputs.init-outcome == 'skipped' && '⚪️' || '🔴'}} Terraform Initialization
+
+          ${{ inputs.init-outcome == 'failure' &&
+            '<details><summary>Show Init Error</summary>
+
+            \`\`\`\n
+            ${process.env.INIT_ERROR}
+            \`\`\`
+
+            </details>' || ''
+          }}
+
+
+          #### ${{ inputs.verify-state-outcome == 'success' && '🟢' || inputs.verify-state-outcome == 'skipped' && '⚪️' || '🔴'}} Terraform Verify State
+
+          ${{
+            inputs.verify-state-outcome == 'failure' &&
+            '<details><summary>Show Verify State Error</summary>
+
+            \`\`\`\n
+            ${process.env.VERIFY_STATE_ERROR}
+            \`\`\`
+
+            </details>' || ''
+          }}
+
+          #### ${{ inputs.validate-outcome == 'success' && '🟢' || inputs.validate-outcome == 'skipped' && '⚪️' || '🔴'}} Terraform Validation
+
+          ${{
+            inputs.validate-outcome == 'failure' &&
+            '<details><summary>Show Validation Error</summary>
+
+            \`\`\`hcl\n
+            ${process.env.VALIDATION_ERROR}
+            \`\`\`
+
+            </details>' || ''
+          }}
+
+          #### ${{ inputs.plan-outcome == 'success' && '🟢' || inputs.plan-outcome == 'skipped' && '⚪️' || '🔴'}} Terraform Plan
+
+          ${{ inputs.plan-outcome == 'success' &&
+            '<details><summary>Show Plan</summary>
+
+            \`\`\`hcl\n
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>' || ''
+          }}
+
+          ${{ inputs.plan-outcome == 'failure' &&
+            '<details><summary>Show Plan Error</summary>
+
+            \`\`\`hcl\n
+            ${process.env.PLAN_ERROR}
+            \`\`\`
+
+            </details>' || ''
+          }}
+
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, ${{ inputs.tf_actions_working_dir != '' && 'Working Directory: \`${process.env.WORKING_DIR}\`, ' || '' }}Workflow: \`${{ github.workflow }}\`*`;
+
+          // 3. If we have a comment, delete it. Create a new one either way
+          if (botComment) {
+            github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id
+            })
+          }
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })

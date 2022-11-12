@@ -1,0 +1,90 @@
+name: Terraform Plan on PR
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  # This is needed for aws-actions/configure-aws-credentials to work
+  id-token: write
+  contents: read
+  # This is needed for terraform action to write comments on a PR
+  pull-requests: write
+
+concurrency:
+  group: terraform-github-actions
+
+env:
+  ROLE_TO_ASSUME: <GITHUB_ROLE_IN_MANAGEMENT_ACCOUNT_FOR_TERRAFORM_REPO>
+  AWS_REGION: <YOUR_AWS_REGION>
+
+jobs:
+  terraform-validate-and-plan:
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1-node16
+        with:
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: actions/checkout@v3
+      - uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Check Formatting
+        id: fmt
+        run: terraform fmt -check
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -no-color
+        continue-on-error: true
+
+        # To catch accidentally deleting or changing remote backend
+        # If state is not present, this will fail
+      - name: Terraform Verify State
+        id: verify-state
+        run: terraform state list -no-color
+        if: ${{ steps.init.outcome == 'success' }}
+        continue-on-error: true
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+        if: ${{ steps.verify-state.outcome == 'success'}}
+        continue-on-error: true
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false
+        if: ${{ steps.validate.outcome == 'success' }}
+        continue-on-error: true
+
+      - name: Update PR comment
+        uses: ./.github/actions/terraform-update-pr-comment
+        with:
+          fmt-outcome: ${{ steps.fmt.outcome }}
+          fmt-outputs: ${{ steps.fmt.outputs.stdout }}
+
+          init-outcome: ${{ steps.init.outcome }}
+          init-error-outputs: ${{ steps.init.outputs.stderr }}
+          verify-state-outcome: ${{ steps.verify-state.outcome }}
+          verify-state-error-outputs: ${{ steps.verify-state.outputs.stderr }}
+
+          validate-outcome: ${{ steps.validate.outcome }}
+          validate-error-outputs: ${{ steps.validate.outputs.stderr }}
+
+          plan-outcome: ${{ steps.plan.outcome }}
+          plan-outputs: ${{ steps.plan.outputs.stdout }}
+          plan-error-outputs: ${{ steps.plan.outputs.stderr }}
+
+          tf_actions_working_dir: ${{ env.tf_actions_working_dir }}
+
+      - name: Fail Job
+        if: |
+          steps.fmt.outcome != 'success' ||
+          steps.init.outcome != 'success' ||
+          steps.verify-state.outcome != 'success' ||
+          steps.validate.outcome != 'success' ||
+          steps.plan.outcome != 'success'
+        run: echo "Some of the previous steps have failed" && exit 1
