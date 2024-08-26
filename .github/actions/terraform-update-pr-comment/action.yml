@@ -132,8 +132,7 @@ runs:
 
             </details>' || ''
           }}
-
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, ${{ inputs.tf_actions_working_dir != '' && 'Working Directory: \`${process.env.WORKING_DIR}\`, ' || '' }}Workflow: \`${{ github.workflow }}\`*`;
+          `;
 
           // 3. If we have a comment, delete it. Create a new one either way
           if (botComment) {

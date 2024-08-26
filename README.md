@@ -1,139 +1,136 @@
-# Description 
-This guide explains how to achieve the following:
-- Have 5 AWS accounts within an AWS organization:
-  * Created manually:
-    * `management` - manually created. Account where all the users are defined
-  * created by terraform. Only roles are defined here and they can be assumed by users or roles in `management` account:
-    * `dev`
-    * `ci`
-    * `staging`
-    * `prod`
+# Description
 
-- 2 github repos that can make changes to all AWS accounts without storing any credentials
-  * `app repo` - stores all application code
-  * `terraform repo` - stores all terraform code
-  
-- Terraform code can be planned and applied via github actions
+This guide explains how to setup AWS account for starting a new project in AWS. The setup includes the following:
 
-- AWS users, roles and permissions are fully defined by terraform
+- Have 3 AWS accounts within an AWS organization:
+  * `management` - manually created "parent" account for AWS Organization
+  * `dev` - created via terraform
+  * `prod`- created via terraform
 
-- Cross-account access is configured for users with different levels of access, depending on usergroups
+- AWS SSO login for users and control permissions for users to each AWS account
+
+- Configured permissions for your terraform github repo and your "app" github repo to be able to make changes in AWS accounts. This is achieved via [OpenID Connect setup for github](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+
+- Github actions that let you exeute `plan` and `apply`
+
 
 # Prerequisites
 
-- Terraform installed locally
+## 3 email root addresses for AWS accounts
+- myproject@gmail.com - root email for AWS management account (recommended to be @gmail.com rather than your custom domain, in case you move DNS nameservers to AWS and manage break it, you still want to have access to your management account via root email)
+- aws.dev@myproject.com - root email for AWS dev account (can also be @gmail.com)
+- aws.prod@myproject.com - root email for AWS prod account (can also be @gmail.com)
 
-- AWS cli installed locally
+## User emails
+Email for each of the user that needs access to AWS. That would be at least one email for yourself
+- alex@myproject.com
 
-- Have 5 email address for `management`, `ci`, `dev`, `staging` and `prod` AWS accounts.
+## Easy way to get multiple email addresses
+You can use a gmail hack where you can add a `+` after your email address and it will alias it to the originial one. For example:
+`myproject+management@gmail.com`, `myproject+dev@gmail.com`, `myproject+prod@gmail.com`, `myproject+alex@gmail.com`
 
-You can use a gmail hack where you can add a `+` after your email address and it will alias it to the originial one. `myproject+management@gmail.com`, `myproject+dev@gmail.com`, `myproject+ci@gmail.com`, `myproject+staging@gmail.com`, `myproject+prod@gmail.com`
+## Terraform CLI
+You need to have Terraform CLI installed locally, preferrably via tfenv.
+
+[Install tfenv with brew](https://formulae.brew.sh/formula/tfenv)
+
+## AWS ClI
+[Install AWS CLI with brew](https://formulae.brew.sh/formula/awscli)
+
 
 # Setup
 
-1. Create a fresh AWS account with the email address you chose for management account (`myproject+management@gmail.com`). Do this through AWS console. And login to this account as root user.
+## First AWS account
+- Manually create AWS account with myproject@gmail.com email and name this account `<myproject>-management`
 
-2. Go to IAM and create a user named `terraform-tmp` with `programmatic access` box checked. Attach existing policy `AdministratorAccess` directly to it. **Note down the Access key ID and Secret access key**
 
-3. Configure/export the access key and secret access key for `terraform-tmp` user
+- Go to IAM and manually create a new `terraform-tmp` user, give  it administrator access permissions and create programmatic access keys
 
-4. Make sure you're making changes to the right AWS account. Execute this command to see who you are authenticated as
-
+- Create a new aws credentials profile locally in `~/.aws/credentials` like this:
 ```
-aws sts get-caller-identity
-```
-
-7. Clone this repository and cd into it
-
-8. Remove origin
-
-```
-git remote remove origin
+[myproject-tmp]
+aws_access_key_id = <access key id>
+aws_secret_access_key = <secret access key>
+region = <region>
 ```
 
-9. Set aws region and terraform state bucket name and information about AWS accounts and users
+* Check credentials are configured correctly by executing
+```
+AWS_PROFILE=myproject-tmp aws sts get-caller-identity
+```
 
-### Open `./main.tf`
+## Clone this repo 
 
+* Clone this repository and cd into it
+
+* Remove origin
+`git remote remove origin`
+
+## Configure accounts and repos
+
+Open `./main.tf`
+
+- Change terraform aws provider verison constrant to the latest. As of now it will be `version = "~> 5.0"` https://registry.terraform.io/providers/hashicorp/aws/latest/docs
 - Change `aws-region` in `locals` to the region you want
 - Change `terraform_state_bucket_name` to the bucket name that makes sense for your project. **Bucket name must be unique across all of AWS**
 - Change `region` and `bucket` in `backend` configuration a few lines above to match the values you just set in `locals`. Keep backend configuration commented out for now
 - Set `github_org` to your github organization name or your github username
 - Set `github_app_repo` to the name of the repo with the app code
-- Create an empty repo in the same github account/org and name it `terraform-org` (or anything else that makes sense to you)
+- Create an empty repo in the same github account/org and name it `<my-project>-terraform` (or anything else that makes sense to you)
 - Set `github_terraform_repo` to the name of the empty repo for the terraform code we just created
-- Set `XXX_account_name` and `XXX_account_root_email` emails for 4 AWS accounts. All names and emails must be distinct (Use the emails you prepared in prerequisites)
+- Set `XXX_account_name` and `XXX_account_root_email` emails for dev and pord AWS accounts. All names and emails must be distinct (Use the emails you prepared in prerequisites)
 
-### Open `./users/users.tf`
-
-- Set username and email for the AWS IAM user that will be created for yourself. By default this user will be given readonly access to all envs
-
-10. Terraform init for the first time
+## Terraform init
+- check you current terraform version is what you expect
 
 ```
-terraform init
+terraform --version
 ```
 
-11. Terraform plan for the first time
-
-We are providing `OrganizationAccountAccessRole` here so that terraform assumes it in each member account when making a change there. We need to do this because by default it will attempt to assume a different role that is available only to github repo.
-
+- terraform init
 ```
-terraform plan -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+AWS_PROFILE=myproject-tmp terraform init
 ```
 
-12. Terraform apply for the first time
+this should generated `.terraform.lock.hcl` (not gitignored on purpose) and a `.terraform` folder which is gitignored
 
-This will create:
-
-### Terraform remote state storage
-
-- S3 bucket for storing terraform state
-- Dynamodb table for locking the state
-- Secret in KMS for encypting data in s3
-
-### Organization
-
-- Organization in management account
-- 4 member accounts: `dev`, `ci`, `staging`, `prod`
-
-### Roles for github repos
-
-- Github identity provider, so that you repo can assume role without storing credentials
-- 2 roles with AdministratorAccess in each member account (`dev`, `ci`, `staging` and `prod`) that can be assumed by specific roles in management account
-- 2 roles in management account for github repos that give permissions to assume roles in `dev`, `ci`, `staging` and `prod` with AdministratorAccess
-
-### Other IAM
-
-- Users
-- Usergroups
-- Associated permissions for cross-account access
-
+## Terraform plan
+- Run terraform plan
 ```
-terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
-
--> Do you want to perform these actions?
-yes
+AWS_PROFILE=myproject-tmp terraform plan -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
 ```
 
-Note down the `app_repo_role_arn` and `terraform_repo_role_arn` in outputs `management_account` object after apply.
+We are providing OrganizationAccountAccessRole here so that terraform assumes it in each member account when making a change there. We need to do this because by default it will attempt to assume a different role that only github repo can assume
 
-Also take a note of each AWS account id.
+## Terraform apply
 
-13. Uncomment the s3 backend provider code in `./main.tf`, cause now we created all infrastructure to be able to switch to new backend. Double check the value here match the ones a few lines beloew in `locals` in the same file
+- Run terraform apply
+```
+AWS_PROFILE=myproject-tmp terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole`
+```
+
+* Note down the terraform output, which should inlcude `app_repo_role_arn` and `terraform_repo_role_arn` and ids for 3 AWS accounts
+
+Now you have created `dev` and `prod` AWS accounts which are a part of the same AWS organisation with the `management` account being the parent. All billing is consolidated into the `management` account, it also holds all the AWS users in its SSO (IAM Identity Center) config. 
+
+This should have also created a local `terraform.tfstate` file, which is gitignored. In the next step we will move this state into an S3 bucket.
+
+## Move local terraform state to the S3 bucket
+
+* Uncomment the S3 backend provider code in `./main.tf`, cause now we created all the needed infrastructure to be able to switch to remote backend. Double check the values here match the ones a few lines below it in locals in the same file
 
 ```
 terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 
   backend "s3" {
     region         = "<YOUR_AWS_REGION>"
-    bucket         = "terraform-state-for-<YOUR_GITHUB_ORG or USERNAME>-<YOUR_GITHUB_TERRAFORM_REPO_NAME>"
+    bucket         = "terraform-state-for-<YOUR_PROJECT>"
     dynamodb_table = "terraform-state-lock"
     kms_key_id     = "alias/terraform-bucket-key"
 
@@ -143,307 +140,216 @@ terraform {
 }
 ```
 
-14. Terraform init once again cause we're using new backend
-
+* Terraform init once again with the new backend setup
 ```
-terraform init
+AWS_PROFILE=myproject-tmp terraform init
+
 
 -> Do you want to copy existing state to the new backend?
 yes
 ```
 
-15. Just as a test, do terraform apply and see 0 changes
-
+* For a piece of mind do terraform apply and see 0 changes
 ```
-terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+AWS_PROFILE=myproject-tmp terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
 ```
 
-16. Open `./.github/workflows/apply-on-master.yml` and `./.github/workflows/plan-on-PR.yml` and in both of them
+Now the state from the local `terraform.tfstate` file was moved to the S3 and this local file should be empty now
 
-- set `ROLE_TO_ASSUME` to the `terraform_repo_role_arn` that terraform apply output gave you in step 12
+## Enable SSO (IAM Identity Center)
+IAM Identity Center is a preferred way to manage AWS users compared to normal IAM users. This plays well with the multiaccount setup as it simplifies the way to jump between accounts. Sadly not everything can be configured via terraform and a few manual steps are required
+
+- Go to AWS console -> IAM Identity Center -> Click "Enable" -> (if prompted enable with AWS Organizations) -> Continue
+- Manually edit “AWS access portal URL” to match your domain. Note down this link, it is used to login into AWS console via SSO. (The new link might take a bit of time to start working)
+- (optional) Disable MFA -> Configure multi-factor authentication (MFA) -> Never -> Save
+
+## Configure users
+
+Open `./modules/sso/users.tf`
+
+- Fill out user data and which users have dev and prod access.
+  - `developers` group will give admin access to dev account and readonly access to prod and management accounts
+  - `prod_admins` group will additionally give admin access to prod and management accounts
+
+- go to `./main.tf` and uncomment the `sso` module at the bottom
+
+- run terraform apply
+```
+AWS_PROFILE=myproject-tmp terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+```
+
+- After terraform is applied, go to AWS console -> IAM Identity Center and for each user and click “verify email” for the confirmation to be sent
+
+- In the same place, for each user reset the password by either generating a one-time password or selecting an option to send email with instructions
+
+## Login via SSO
+Stop using root email and switch to SSO login instead
+
+- Logout from AWS account
+
+- go to the SSO login url you previously noted `https://<MY_PROJECT>.awsapps.com/start`
+
+- use the username and password for your own AWS user that you have previously created in terraform code and reset the password for
+
+- now you can select the account to login to, select `<myproject>-dev`, this will be needed for a later step
+
+## Github Actions
+Open all yamls in `./.github/workflows` and for all of them
+
+- set `ROLE_TO_ASSUME` to the `terraform_repo_role_arn` that terraform apply output gave you previously
+
 - set `AWS_REGION` to the region that you set for terraform backend in `./main.tf`
 
-17. Commit your code to `master`, add remote repository, and push to `master`
-
-This step will push your code to the repo and in `Actions` tab on github you will see 2 github action appear
-
-Note that repository name and org should match what you specified in `./main.tf`
-
-```git
+## Push to git
+- Commit your code to `master`
+```
 git add .
 git commit -m "setup remote state and gh actions"
-
+```
+- Add `<my-project>-terraform` repository that you created in one of the previous steps as a remote
+```
 git remote add origin git@github.com:<YOUR_GITHUB_ORG or USERNAME>/<YOUR_GITHUB_TERRAFORM_REPO_NAME>.git
+```
+
+- Push
+```
 git push --set-upstream origin master
 ```
 
-18. Add 5 AWS account IDs noted down in step 12 to the top of this README
-
-- Pull latest master and create a new branch off it
-
+## Create a test PR
+- Create a new branch
 ```
-git checkout master
-git pull
-git checkout -b "add-aws-account-ids-to-readme"
-```
-
-Use the following format:
-
-```
-AWS management account:
-  ID: <ACCOUNT_ID>
-  Root email: <ROOT_EMAIL>
-
-
-AWS dev account:
-  ID: <DEV_ACCOUNT_ID>
-  Root email: <DEV_ROOT_EMAIL>
-
-AWS ci account:
-  ID: <CI_ACCOUNT_ID>
-  Root email: <CI_ROOT_EMAIL>
-
-AWS staging account:
-  ID: <STAGING_ACCOUNT_ID>
-  Root email: <STAGING_ROOT_EMAIL>
-
-AWS prod account ID:
-  ID: <ACCOUNT_ID>
-  Root email: <PROD_ROOT_EMAIL>
-```
-
-- create PR and merge
-
-```
-git add .
-git commit -m "added aws account ids"
-git push --set-upstream origin add-aws-account-ids-to-readme
-```
-
-- Click on the link that git cli gives you to create PR
-- See gh action run on the PR and plan
-- See 0 changes in the plan
-- Merge the PR
-- See gh action run again on merge, this action should detect 0 changes as well in apply step
-
-19. Delete the `terraform-tmp` user
-
-- Login to AWS management account as root (if not already)
-- Go to IAM
-- delete `terraform-tmp` user
-- delete/unset access key and secret key you used locally up to this point
-- from this point you won't be able to apply terraform locally, the only way is via PR on github
-
-20. Stop using root and start using IAM user
-
-- Go to IAM
-- Select the user terraform created after apply
-- go to security credentials and manually create console login credentials for that user
-
-- Save these credentials along with AWS account id to your password manager
-
-- Create access key and secret key for this user and export/configure them locally
-
-- Make sure you're now authenticated as the new IAM user and you are the right account
-
-```
-aws sts get-caller-identity
-```
-
-- Logout from root account in AWS console and login as the new IAM user. This is the IAM user account you should be using from now on
-
-21. Configure cross-account access via AWS console
-
-By default this user will have readonly access to all accounts. Through the console you will always login to management account. To see other accounts,you assume roles to those accounts from management account
-
-Now we will setup quick readonly access to 4 member accounts
-
-- On very the top right in AWS console, click on the dropdown
-
-### Dev
-
-- Click `switch role`
-- Click another big `switch role` button if it is shown
-- You are asked to enter 3 field values
-  - Account - enter id of dev AWS account
-  - Role - enter `readonly-role`
-  - Display Name - enter `dev-readonly`
-  - Select green color
-  - Click `switch role`
-- Now you are signed into dev account as readonly user
-  Repeat the
-
-### CI
-
-- Repeat the same steps, display name - enter `ci-readonly`
-
-### Staging
-
-- Repeat the same steps, display name - enter `staging-readonly`
-
-### Prod
-
-- Repeat the same steps, display name - enter `prod-readonly`. Select `orange` color to indicate it's `prod`
-
-Now you should have 4 shortcuts in AWS console on the top right to quickly switch between accounts
-
-To assume roles from AWS CLI refer to this guide: https://aws.amazon.com/premiumsupport/knowledge-center/iam-assume-role-cli/
-
-In short, you would need to
-
-- execute
-
-```
-aws sts assume-role --role-arn "arn:aws:iam::<ACCOUNT_ID>:role/readonly-role" --role-session-name=<YOUR_USERNAME>-readonly
-```
-
-- export temporary credentials from the output of the command above
-
-```
-export AWS_ACCESS_KEY_ID=RoleAccessKeyID
-export AWS_SECRET_ACCESS_KEY=RoleSecretKey
-export AWS_SESSION_TOKEN=RoleSessionToken
-```
-
-- verify you are authenticated in the right account with the right role
-
-```
-aws sts get-caller-identity
-```
-
-22. Create a test PR creating an S3 bucket
-
-- Pull latest master and create a new branch off it
-
-```
-git checkout master
-git pull
 git checkout -b "add-my-first-test-bucket"
 ```
 
-- Open `./accounts/dev/main.tf`
+In `./accounts/dev/main.tf`
 - Add an S3 bucket at bottom (note that the name should be unique across all AWS)
-
-```hcl
+```
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "my-test-bucket-<YOUR_GITHUB_ORG or USERNAME>-<YOUR_GITHUB_TERRAFORM_REPO_NAME>" # or anything else unique accross whole AWS
 }
 ```
 
-- Create a PR with those changes
-
+- Commit these changes to a branch and push 
 ```
 git add .
 git commit -m "added my first bucket"
 git push --set-upstream origin add-my-first-test-bucket
 ```
 
-- Click on the link that git cli gives you to create PR
+- Create a PR by clicking on the link that git cli gives you
 
-- See `Terraform Plan on PR` action automatically start on the PR. Once the action finishes it will create a comment on your PR where you can preview the result of `terraform plan`
+## Verify Github Actions
 
-- Merge the PR and see successful gh action run
+- See `Terraform Plan on PR` action automatically start on the PR. Once the action finishes it will create a comment on your PR where you can preview the result of `terraform plan`, 
 
-- See `Terraform Apply on Master` action starting and succesfully completing
+- Merge the PR and see `Terraform Apply on Master` action starting and succesfully completing
 
 - Go to `dev` account in AWS console and verify the bucket was created there
 
-- Go to `ci`, `staging` and `prod` accounts in AWS console and verify there's no buckets there
+- You can repeat the steps by create another PR to delete this test bucket
 
-23. Create another PR to delete the test bucket
+## Delete the terraform-tmp user
 
-- Pull latest master and create a new branch off it
+- go to SSO login link previosly noted and login to the management account
 
+- go to IAM and delete the `terraform-tmp` user manually created at the very start of this guide
+
+
+## Update README and setup local access
+
+This is it, now you can delete all the instructions above this one and use the below template for readme that this repository should have. Replace all the `<ACCOUNT_ID>`, `<ROOT_EMAIL>` and  `<YOUR_PROJECT>` with real values so that it's easier to refer to in the future. Also follow the below instructions to setup AWS CLI access to all the accounts via profiles
+
+======= README TEMPLATE START =======
+
+This repo and AWS accounts were setup following [starter project instructions](https://github.com/alekseyrozh/terraform-multiaccount-project-quickstart)
+
+# AWS Accounts
 ```
-git checkout master
-git pull
-git checkout -b "remove-test-bucket"
-```
+AWS management account:
+  ID: <ACCOUNT_ID>
+  Root email: <ROOT_EMAIL>
 
-- Open `./accounts/dev/main.tf` and remove the lines we added in step 22
+AWS dev account:
+  ID: <ACCOUNT_ID>
+  Root email: <ROOT_EMAIL>
 
-```hcl
-resource "aws_s3_bucket" "terraform_state" {
-  bucket = "my-test-bucket-<YOUR_GITHUB_ORG or USERNAME>-<YOUR_GITHUB_REPO>"
-}
-```
-
-- Commit and create a PR
-
-```
-git add .
-git commit -m "remove test bucket"
-git push --set-upstream origin remove-test-bucket
-```
-
-- Click on the link that git cli gives you to create PR
-- Wait until `Terraform Plan on PR` finishes and adds a comment to a PR to of with the plan that removes the bucket
-- Merge pull request
-- Wait until `Terraform Apply on Master` succeeds
-- Verify the bucket is deleted from `dev` AWS account
-
-# How to
-
-## Use terraform locally
-
-### terraform init
-
-Works locally
-
-### terraform validate
-
-Works locally
-
-### terraform plan
-
-Works locally with extra flags
-
-```
-terraform plan -lock=false -var role_name_to_assume_in_member_accounts=readonly-role
+AWS prod account ID:
+  ID: <ACCOUNT_ID>
+  Root email: <ROOT_EMAIL>
 ```
 
-- `-lock=false` means that when the dynamodb lock table is not gonna be used as developers don't have write permissions to it
+# How to get access to AWS
 
-- `role_name_to_assume_in_member_accounts=readonly-role` is specifying which role in member accounts should be used for terraform to read state to be able to `plan`
+### Login to AWS console
+https://<YOUR_PROJECT>.awsapps.com/start
 
-Ideally you wouldn't need to do that, but if you really need to there are 2 ways
 
-### terraform apply
-
-Doesn't work locally as developers don't have write permissions to all accounts by default.
-
-There are 2 ways to make it work
-
-#### 1. Adding admin rights in all member accounts to your current IAM user
-
-- Add the IAM user you are using to `dev-admins` and `prod-admins` groups in terraform file `./users/users.rf`
-- Create a PR
-- See plan
-- Merge the PR
-- See it successfully aplied
-
-- Now you can execute terraform apply locally:
-
+### Setup local access to AWS
+Add this to `~/.aws/config`
 ```
-terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+[sso-session <YOUR_PROJECT>]
+sso_region = eu-central-1
+sso_start_url = https://<YOUR_PROJECT>.awsapps.com/start
+sso_registration_scopes = sso:account:access
 ```
 
-#### 2. Create a temporary IAM user with AdministratorAccess
-
-- Login to management AWS account as root user
-- Create temporary IAM user with programmatic access enabled and `AdministratorAccess` policy attached
-- Create access key and secret access key for that user
-- Export/configure them locally
-- Verify you're authenticated as the new temporary user
-
+Add this to `~/.aws/credentials`
 ```
-aws sts get-caller-identity
+; this profile is enough for doing dev stuff
+
+[<YOUR_PROJECT>-dev]
+sso_session = <YOUR_PROJECT>
+sso_account_id = <DEV_AWS_ACCOUNT_ID>
+sso_role_name = AdministratorAccess
+
+
+; don't add this, unless you really need it
+
+[<YOUR_PROJECT>-prod]
+sso_session = <YOUR_PROJECT>
+sso_account_id = <PROD_AWS_ACCOUNT_ID>
+sso_role_name = AdministratorAccess
+
+
+; don't add this, unless you really need it
+
+[<YOUR_PROJECT>-management]
+sso_session = <YOUR_PROJECT>
+sso_account_id = <MANAGEMENT_AWS_ACCOUNT_ID>
+sso_role_name = AdministratorAccess
 ```
 
-- all terraform operations will work now locally, including
 
+And then execute, which should redirect you to the browser login, this command might need to be repeated every time the login expires
 ```
-terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+aws sso login --sso-session <YOUR_PROJECT>
 ```
 
-- Delete the temporary IAM user once done
+# How to make terraform changes
+
+The simplest way to make change is to create a PR, wait for gh action to automatically add a comment with the results of `plan`. if you happy with it,merge the PR and `apply` will automatically execute. Additionally you can execute `apply` from a branch or from master manually by manually kicking off `Manual Terraform Apply on Branch` gh action and selecting the branch there.
+
+# How to run terraform locally
+To be able to execute terraform commands locally you most likely need to have access to all AWS accounts. `init` and `plan` might require readonly access only, while `apply` will required write access to accounts. The below commands assume you have `<YOUR_PROJECT>-management` profile setup with enough permissions.
+
+
+### Terraform init
+```
+AWS_PROFILE=<YOUR_PROJECT>-management terraform init
+```
+
+### Terraform plan
+```
+AWS_PROFILE=<YOUR_PROJECT>-management terraform plan -lock=false -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+```
+
+### Terraform apply
+```
+AWS_PROFILE=<YOUR_PROJECT>-management terraform apply -var role_name_to_assume_in_member_accounts=OrganizationAccountAccessRole
+```
+
+### Terraform format
+```
+terraform fmt
+```

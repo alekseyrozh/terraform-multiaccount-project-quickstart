@@ -32,10 +32,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
     }
   }
 }
-resource "aws_s3_bucket_acl" "state_bucket" {
-  bucket = aws_s3_bucket.terraform_state.id
-  acl    = "private"
-}
+
 resource "aws_s3_bucket_public_access_block" "state_bucket" {
   bucket = aws_s3_bucket.terraform_state.id
 

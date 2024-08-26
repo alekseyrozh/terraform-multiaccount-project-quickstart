@@ -75,6 +75,25 @@ resource "aws_iam_role_policy_attachment" "allow_full_iam_access" {
   policy_arn = "arn:aws:iam::aws:policy/IAMFullAccess"
 }
 
+# Allow terraform to manage sso users
+data "aws_iam_policy_document" "allow_full_iam_identity_center_access" {
+  statement {
+    actions = [
+      "identitystore:*"
+    ]
+    effect    = "Allow"
+    resources = ["*"]
+  }
+}
+resource "aws_iam_policy" "allow_full_iam_identity_center_access" {
+  name   = "allow-full-iam-identity-center-access"
+  policy = data.aws_iam_policy_document.allow_full_iam_identity_center_access.json
+}
+resource "aws_iam_role_policy_attachment" "allow_full_iam_identity_center_access" {
+  role       = module.github_oidc_terraform_repo_role.name
+  policy_arn = aws_iam_policy.allow_full_iam_identity_center_access.arn
+}
+
 # Allow decrypting the contents of s3 terraform state bucket
 resource "aws_iam_role_policy_attachment" "allow_decrypting_s3_state_bucket_with_kms_key" {
   role       = module.github_oidc_terraform_repo_role.name

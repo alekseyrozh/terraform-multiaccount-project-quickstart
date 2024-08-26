@@ -1,0 +1,68 @@
+name: Manual Terraform Apply on Branch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  # This is needed for aws-actions/configure-aws-credentials to work
+  id-token: write
+  contents: read
+
+concurrency:
+  group: terraform-github-actions
+
+env:
+  ROLE_TO_ASSUME: <GITHUB_ROLE_IN_MANAGEMENT_ACCOUNT_FOR_TERRAFORM_REPO>
+  AWS_REGION: <YOUR_AWS_REGION>
+
+jobs:
+  terraform-validate-and-apply:
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1-node16
+        with:
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get sha to deploy
+        id: get-sha-to-deploy
+        run: |
+          sha=${{ github.sha }}
+          if [[ ! $sha ]]; then
+            echo -e "sha is empty $sha"
+            exit 1
+          fi
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ steps.get-sha-to-deploy.outputs.sha }}
+
+      - uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Check Formatting
+        id: fmt
+        run: terraform fmt -check
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -no-color
+
+        # To catch accidentally deleting or changing remote backend
+        # If state is not present, this will fail
+      - name: Terraform Verify State
+        id: verify-state
+        run: terraform state list -no-color
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      # - name: Terraform Plan
+      #   id: plan
+      #   run: terraform plan -no-color -input=false
+
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply  -no-color -input=false -auto-approve
