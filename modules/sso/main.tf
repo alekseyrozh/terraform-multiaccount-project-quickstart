@@ -28,13 +28,6 @@ resource "aws_identitystore_group" "developers" {
   display_name      = "developers"
   identity_store_id = local.identity_store_id
 }
-# resource "aws_identitystore_group_membership" "developers_memebership" {
-#   for_each = aws_identitystore_user.all_users
-
-#   identity_store_id = local.identity_store_id
-#   group_id          = aws_identitystore_group.developers.group_id
-#   member_id         = each.value.user_id
-# }
 resource "aws_identitystore_group_membership" "developers_memebership" {
   for_each = { for user in aws_identitystore_user.all_users: user.user_name => user if contains([for u in local.developers: u.user_name], user.user_name)}
 
