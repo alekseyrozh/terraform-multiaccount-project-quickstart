@@ -83,11 +83,12 @@ resource "aws_iam_role_policy_attachment" "allow_full_iam_access" {
   policy_arn = "arn:aws:iam::aws:policy/IAMFullAccess"
 }
 
-# Allow terraform to manage sso users
+# Allow terraform to manage sso users, groups, permission sets and account assignments (modules/sso)
 data "aws_iam_policy_document" "allow_full_iam_identity_center_access" {
   statement {
     actions = [
-      "identitystore:*"
+      "identitystore:*",
+      "sso:*"
     ]
     effect    = "Allow"
     resources = ["*"]
