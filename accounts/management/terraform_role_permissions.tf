@@ -84,22 +84,8 @@ resource "aws_iam_role_policy_attachment" "allow_full_iam_access" {
 }
 
 # Allow terraform to manage sso users, groups, permission sets and account assignments (modules/sso)
-data "aws_iam_policy_document" "allow_full_iam_identity_center_access" {
-  statement {
-    actions = [
-      "identitystore:*",
-      "sso:*"
-    ]
-    effect    = "Allow"
-    resources = ["*"]
-  }
-}
-resource "aws_iam_policy" "allow_full_iam_identity_center_access" {
-  name   = "allow-full-iam-identity-center-access"
-  policy = data.aws_iam_policy_document.allow_full_iam_identity_center_access.json
-}
-resource "aws_iam_role_policy_attachment" "allow_full_iam_identity_center_access" {
+resource "aws_iam_role_policy_attachment" "allow_managing_sso" {
   role       = module.github_oidc_terraform_repo_role.name
-  policy_arn = aws_iam_policy.allow_full_iam_identity_center_access.arn
+  policy_arn = "arn:aws:iam::aws:policy/AWSSSOMasterAccountAdministrator"
 }
 
