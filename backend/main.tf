@@ -1,15 +1,3 @@
-# KMS
-resource "aws_kms_key" "terraform_bucket_key" {
-  description             = "This key is used to encrypt terraform state bucket"
-  deletion_window_in_days = 10
-  enable_key_rotation     = true
-}
-
-resource "aws_kms_alias" "key_alias" {
-  name          = var.kms_key_alias
-  target_key_id = aws_kms_key.terraform_bucket_key.key_id
-}
-
 # S3
 resource "aws_s3_bucket" "terraform_state" {
   bucket = var.state_bucket_name
@@ -27,8 +15,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
   bucket = aws_s3_bucket.terraform_state.bucket
   rule {
     apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.terraform_bucket_key.arn
-      sse_algorithm     = "aws:kms"
+      sse_algorithm = "AES256"
     }
   }
 }
@@ -42,15 +29,3 @@ resource "aws_s3_bucket_public_access_block" "state_bucket" {
   restrict_public_buckets = true
 }
 
-# Dynamo
-resource "aws_dynamodb_table" "dynamodb-terraform-state-lock" {
-  name           = var.dynamo_lock_table_name
-  hash_key       = "LockID"
-  read_capacity  = 5
-  write_capacity = 5
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}

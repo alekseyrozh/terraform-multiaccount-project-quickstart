@@ -12,7 +12,3 @@ output "terraform_repo_role_arn" {
 output "id" {
   value = data.aws_caller_identity.current.account_id
 }
-
-output "allow_decrypting_s3_state_policy_arn" {
-  value = aws_iam_policy.allow_decrypting_s3_state_bucket_with_kms_key.arn
-}

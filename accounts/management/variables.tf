@@ -24,10 +24,7 @@ variable "roles_terraform_repo_can_assume" {
 
 variable "terraform_state" {
   type = object({
-    bucket_name        = string
-    path               = string
-    bucket_kms_key_arn = string
-
-    dynamo_table_name = string
+    bucket_name = string
+    path        = string
   })
 }

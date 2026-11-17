@@ -1,6 +1,6 @@
 # This is a place to fine grain the permissions for a terraform role that is assumed by terraform repo
 #  we need this role to have permissions to assume corresponding roles in management account
-#  we also need to give the repo permissions to manage the state (s3 + dynamo + kms)
+#  we also need to give the repo permissions to manage the state (s3)
 #  and we might want to make adding changes to management account, so the permissions for that should be defined here
 
 
@@ -59,13 +59,21 @@ data "aws_iam_policy_document" "allow_changing_terraform_state" {
     resources = ["arn:aws:s3:::${var.terraform_state.bucket_name}/${var.terraform_state.path}"]
   }
 
+  # S3 native locking (use_lockfile) writes a lock file next to the state
   statement {
     actions = [
-      "dynamodb:PutItem",
-      "dynamodb:DeleteItem"
+      "s3:PutObject",
+      "s3:DeleteObject"
     ]
     effect    = "Allow"
-    resources = ["arn:aws:dynamodb:*:*:table/${var.terraform_state.dynamo_table_name}"]
+    resources = ["arn:aws:s3:::${var.terraform_state.bucket_name}/${var.terraform_state.path}.tflock"]
+  }
+
+  # Manage the state bucket's encryption (backend/main.tf)
+  statement {
+    actions   = ["s3:PutEncryptionConfiguration"]
+    effect    = "Allow"
+    resources = ["arn:aws:s3:::${var.terraform_state.bucket_name}"]
   }
 }
 
@@ -94,22 +102,3 @@ resource "aws_iam_role_policy_attachment" "allow_full_iam_identity_center_access
   policy_arn = aws_iam_policy.allow_full_iam_identity_center_access.arn
 }
 
-# Allow decrypting the contents of s3 terraform state bucket
-resource "aws_iam_role_policy_attachment" "allow_decrypting_s3_state_bucket_with_kms_key" {
-  role       = module.github_oidc_terraform_repo_role.name
-  policy_arn = aws_iam_policy.allow_decrypting_s3_state_bucket_with_kms_key.arn
-}
-resource "aws_iam_policy" "allow_decrypting_s3_state_bucket_with_kms_key" {
-  name   = "allow-decrypting-s3-state-bucket-with-kms-key"
-  policy = data.aws_iam_policy_document.allow_decrypting_s3_state_bucket_with_kms_key.json
-}
-data "aws_iam_policy_document" "allow_decrypting_s3_state_bucket_with_kms_key" {
-  statement {
-    actions = [
-      "kms:Decrypt",
-      "kms:GenerateDataKey"
-    ]
-    effect    = "Allow"
-    resources = [var.terraform_state.bucket_kms_key_arn]
-  }
-}

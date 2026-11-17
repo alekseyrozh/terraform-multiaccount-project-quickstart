@@ -121,6 +121,8 @@ This should have also created a local `terraform.tfstate` file, which is gitigno
 
 ```
 terraform {
+  required_version = ">= 1.10" # S3 native state locking (use_lockfile)
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -129,12 +131,11 @@ terraform {
   }
 
   backend "s3" {
-    region         = "<YOUR_AWS_REGION>"
-    bucket         = "terraform-state-for-<YOUR_PROJECT>"
-    dynamodb_table = "terraform-state-lock"
-    kms_key_id     = "alias/terraform-bucket-key"
+    region       = "<YOUR_AWS_REGION>"
+    bucket       = "terraform-state-for-<YOUR_PROJECT>"
+    key          = "org-shared-state/terraform.tfstate"
+    use_lockfile = true
 
-    key     = "org-shared-state/terraform.tfstate"
     encrypt = true
   }
 }

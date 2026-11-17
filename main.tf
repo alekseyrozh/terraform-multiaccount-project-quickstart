@@ -1,4 +1,6 @@
 terraform {
+  required_version = ">= 1.10" # S3 native state locking (use_lockfile)
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -10,8 +12,7 @@ terraform {
   #   region         = "<YOUR_AWS_REGION>"
   #   bucket         = "terraform-state-for-<YOUR_PROJECT>"
   #   key            = "org-shared-state/terraform.tfstate"
-  #   dynamodb_table = "terraform-state-lock"
-  #   kms_key_id     = "alias/terraform-bucket-key"
+  #   use_lockfile   = true
 
   #   encrypt = true
   # }
@@ -22,11 +23,9 @@ terraform {
 # so let's at least keep them close to one another
 # This can be avoided by using Terragrunt, but that's an adventure for another day
 locals {
-  aws_region                             = "<YOUR_AWS_REGION>"
-  terraform_state_bucket_name            = "terraform-state-for-<YOUR_PROJECT>" # or anything else unique accross whole AWS
-  terraform_state_path                   = "org-shared-state/terraform.tfstate"
-  terraform_state_dynamo_lock_table_name = "terraform-state-lock"
-  terraform_state_kms_key_alias          = "alias/terraform-bucket-key"
+  aws_region                  = "<YOUR_AWS_REGION>"
+  terraform_state_bucket_name = "terraform-state-for-<YOUR_PROJECT>" # or anything else unique accross whole AWS
+  terraform_state_path        = "org-shared-state/terraform.tfstate"
 
   github_org            = "<YOUR_GITHUB_ORG or USERNAME>"
   github_app_repo       = "<YOUR_GITHUB_APP_REPO_NAME>"
@@ -54,9 +53,7 @@ locals {
 module "terraform_backend" {
   source = "./backend"
 
-  state_bucket_name      = local.terraform_state_bucket_name
-  dynamo_lock_table_name = local.terraform_state_dynamo_lock_table_name
-  kms_key_alias          = local.terraform_state_kms_key_alias
+  state_bucket_name = local.terraform_state_bucket_name
 }
 
 module "management_account" {
@@ -79,11 +76,8 @@ module "management_account" {
   ]
 
   terraform_state = {
-    bucket_name        = local.terraform_state_bucket_name
-    path               = local.terraform_state_path
-    bucket_kms_key_arn = module.terraform_backend.kms_terraform_bucket_key_arn
-
-    dynamo_table_name = local.terraform_state_dynamo_lock_table_name
+    bucket_name = local.terraform_state_bucket_name
+    path        = local.terraform_state_path
   }
 }
 
